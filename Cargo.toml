@@ -1,0 +1,11 @@
+[package]
+name = "mchp_clock_tui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = "0.4"
+crossterm = "0.27"
+getrandom = "0.2"
+sha2 = "0.10"
+ratatui = "0.26"

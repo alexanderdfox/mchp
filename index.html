@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Monte Carlo & Halting Clock</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #0d1117;
+            color: #c9d1d9;
+            font-family: monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+            padding: 20px 0;
+        }
+        h2 {
+            margin-bottom: 5px;
+            letter-spacing: 2px;
+            color: #58a6ff;
+        }
+        #status {
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        .yes { color: #3fb950; }
+        .no { color: #f85149; }
+        
+        .container {
+            position: relative;
+            width: 450px;
+            height: 450px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .clock-face {
+            position: absolute;
+            width: 200px;
+            height: 200px;
+            border: 2px solid #30363d;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #161b22;
+            z-index: 2;
+        }
+        .hand {
+            position: absolute;
+            bottom: 50%;
+            left: 50%;
+            transform-origin: bottom center;
+        }
+        .hour-hand {
+            width: 4px;
+            height: 45px;
+            background: #c9d1d9;
+            transform: translateX(-50%) rotate(0deg);
+        }
+        .minute-hand {
+            width: 3px;
+            height: 65px;
+            background: #58a6ff;
+            transform: translateX(-50%) rotate(0deg);
+        }
+        .center-dot {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #f85149;
+            border-radius: 50%;
+            z-index: 3;
+        }
+
+        svg {
+            position: absolute;
+            width: 450px;
+            height: 450px;
+            z-index: 1;
+        }
+        text {
+            font-family: monospace;
+            font-size: 11px;
+            font-weight: bold;
+            fill: #8b949e;
+        }
+
+        .section-box {
+            margin-top: 15px;
+            width: 90%;
+            max-width: 650px;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 10px;
+            word-break: break-all;
+            letter-spacing: 1px;
+            color: #8b949e;
+            text-align: center;
+            max-height: 70px;
+            overflow-y: auto;
+        }
+
+        #decimalContainer {
+            color: #3fb950;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Secure MCHP State Machine</h2>
+    <div id="status" class="no">Securing Entropy...</div>
+
+    <div class="container">
+        <svg viewBox="0 0 500 500" id="circleSvg">
+            <defs>
+                <path id="textPath" d="M 250, 45 A 205,205 0 1,1 249.9,45 Z" fill="none" />
+            </defs>
+            <text>
+                <textPath href="#textPath" startOffset="0%" id="orbitText">
+                    <!-- Populated securely via JS -->
+                </textPath>
+            </text>
+        </svg>
+
+        <div class="clock-face">
+            <div class="hand hour-hand" id="hourHand"></div>
+            <div class="hand minute-hand" id="minuteHand"></div>
+            <div class="center-dot"></div>
+        </div>
+    </div>
+
+    <!-- Linear Stream Containers -->
+    <div id="linearTextContainer" class="section-box">Initializing secure binary stream...</div>
+    <div id="decimalContainer" class="section-box">Initializing secure decimal stream...</div>
+
+    <script>
+        let alternate = false;
+        const orbitText = document.getElementById('orbitText');
+        const linearTextContainer = document.getElementById('linearTextContainer');
+        const decimalContainer = document.getElementById('decimalContainer');
+        const statusDiv = document.getElementById('status');
+        const hourHand = document.getElementById('hourHand');
+        const minuteHand = document.getElementById('minuteHand');
+
+        // CSPRNG helper using browser secure entropy
+        function getCryptoRandomBytes(length) {
+            const array = new Uint8Array(length);
+            window.crypto.getRandomValues(array);
+            return array;
+        }
+
+        // Initialize 360 secure bits
+        let initialBytes = getCryptoRandomBytes(45); // 45 bytes * 8 = 360 bits
+        let bits = [];
+        for (let byte of initialBytes) {
+            for (let i = 7; i >= 0; i--) {
+                bits.push((byte >> i) & 1);
+            }
+        }
+        bits = bits.slice(0, 360);
+
+        async function updateClockAndSimulation() {
+            const now = new Date();
+            const hours = now.getHours();
+            const minutes = now.getMinutes();
+            const seconds = now.getSeconds();
+            const milliseconds = now.getMilliseconds();
+
+            // Clock Hand Rotations
+            const hourDeg = ((hours % 12) * 30) + (minutes * 0.5);
+            const minuteDeg = (minutes * 6) + (seconds * 0.1);
+
+            hourHand.style.transform = `translateX(-50%) rotate(${hourDeg}deg)`;
+            minuteHand.style.transform = `translateX(-50%) rotate(${minuteDeg}deg)`;
+
+            // --- CRYPTOGRAPHIC HASH MIXING ---
+            const entropyBuffer = new Uint8Array(40);
+            entropyBuffer.set(getCryptoRandomBytes(32), 0); // 32 bytes true OS entropy
+
+            const timeData = new Float64Array([now.getTime()]);
+            entropyBuffer.set(new Uint8Array(timeData.buffer), 32);
+
+            const hashBuffer = await window.crypto.subtle.digest('SHA-256', entropyBuffer);
+            const hashArray = new Uint8Array(hashBuffer);
+
+            const secureMetric = hashArray[0] / 255.0;
+            
+            alternate = !alternate;
+            let success = secureMetric > 0.45;
+            let finalResult = success && alternate;
+
+            const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+            if (finalResult) {
+                statusDiv.textContent = `yes (Secure Halt @ ${timeStr})`;
+                statusDiv.className = "yes";
+            } else {
+                statusDiv.textContent = `no (Secure Loop @ ${timeStr})`;
+                statusDiv.className = "no";
+            }
+
+            let mutateIndex = (hashArray[1] * 256 + hashArray[2]) % bits.length;
+            bits[mutateIndex] = finalResult ? 1 : 0;
+            bits.push(bits.shift()); // Rotate sequence
+
+            let bitString = bits.join('');
+            
+            // Update circular ring and binary box
+            orbitText.textContent = bitString;
+            linearTextContainer.textContent = bitString;
+
+            // --- DECIMAL STREAM CONVERSION (matches Rust chunking logic) ---
+            let decChunks = [];
+            for (let i = 0; i < bits.length; i += 64) {
+                let chunk = bits.slice(i, i + 64);
+                let val = 0n; // Use BigInt to handle 64-bit unsigned integers safely in JS
+                for (let bit of chunk) {
+                    val = (val << 1n) | BigInt(bit);
+                }
+                decChunks.push(val.toString());
+            }
+            decimalContainer.textContent = "DEC: " + decChunks.join(' ');
+        }
+
+        setInterval(updateClockAndSimulation, 1000);
+        updateClockAndSimulation();
+    </script>
+</body>
+</html>
